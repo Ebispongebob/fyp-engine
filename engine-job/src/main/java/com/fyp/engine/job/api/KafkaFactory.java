@@ -1,14 +1,17 @@
 package com.fyp.engine.job.api;
 
 import com.fyp.engine.job.message.EventMessage;
-import com.fyp.engine.job.message.ReceivedMessage;
+import com.fyp.engine.job.message.SinkMessage;
 import com.fyp.engine.job.schema.EventMessageSchema;
-import com.fyp.engine.job.schema.ReceivedMessageSchema;
+import com.fyp.engine.job.schema.SinkMessageSchema;
 import org.apache.flink.connector.base.DeliveryGuarantee;
 import org.apache.flink.connector.kafka.sink.KafkaRecordSerializationSchema;
 import org.apache.flink.connector.kafka.sink.KafkaSink;
 import org.apache.flink.streaming.connectors.kafka.FlinkKafkaConsumer;
+import org.apache.flink.streaming.connectors.kafka.FlinkKafkaProducer;
 
+import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 
 public class KafkaFactory {
@@ -58,15 +61,21 @@ public class KafkaFactory {
      * @param servers 服务器集群地址
      * @return 生产者
      */
-    public static KafkaSink<ReceivedMessage> buildReceivedMsgSink(String topic, String servers) {
-        return KafkaSink.<ReceivedMessage>builder()
-                        .setBootstrapServers(servers)
-                        .setRecordSerializer(KafkaRecordSerializationSchema.builder()
-                                                                           .setTopic(topic)
-                                                                           .setValueSerializationSchema(new ReceivedMessageSchema())
-                                                                           .build()
-                        )
-                        .setDeliverGuarantee(DeliveryGuarantee.EXACTLY_ONCE)
-                        .build();
+    public static FlinkKafkaProducer<Map<String, List<SinkMessage>>> buildSinkMessageSink(String topic, String servers) {
+        return new FlinkKafkaProducer<>(topic, new SinkMessageSchema(), buildProducerProps(servers));
+    }
+
+    private static Properties buildProducerProps(String servers) {
+        Properties properties = new Properties();
+        properties.setProperty("bootstrap.servers", servers);
+        // leader接收到即发送成功
+        properties.setProperty("acks", "1");
+        // 每个分区批次: 1mb
+        properties.setProperty("batch.size", "1048576");
+        // 等待时间:100ms
+        properties.setProperty("linger.ms", "100");
+        // 缓存区大小:128mb
+        properties.setProperty("buffer.memory", "134217728");
+        return properties;
     }
 }

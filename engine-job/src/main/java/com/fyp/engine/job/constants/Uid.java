@@ -6,8 +6,6 @@ public interface Uid {
 
     String CEP = "cep";
 
-    String LATE_DATA = "lateData";
-
     String TIMEOUT = "timeout";
 
     String SORT = "sort";
@@ -16,8 +14,6 @@ public interface Uid {
 
     String SINK = "sink";
 
-    String USER_GROUP = "userGroup";
-
-    String DELAY = "delay";
+    String SINK_KAFKA = "sinkKafka";
 
 }

@@ -5,7 +5,7 @@ import com.fyp.engine.job.config.Configuration;
 import com.fyp.engine.job.info.MatchInfo;
 import com.fyp.engine.job.info.SinkInfo;
 import com.fyp.engine.job.info.SourceInfo;
-import com.fyp.engine.job.message.ReceivedMessage;
+import com.fyp.engine.job.message.SinkMessage;
 import com.fyp.engine.job.utils.CommonConfigUtils;
 import com.google.common.collect.Maps;
 import org.apache.flink.api.java.utils.ParameterTool;
@@ -20,6 +20,7 @@ import org.slf4j.LoggerFactory;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.Map;
 
 public abstract class BaseRtEngine<T> implements RtEngine {
@@ -61,10 +62,12 @@ public abstract class BaseRtEngine<T> implements RtEngine {
         System.out.println("source ok");
 
         // 初始化匹配处理逻辑
-        DataStream<ReceivedMessage> match = initMatcher(env, configuration.getMatchInfo(), source);
+        DataStream<Map<String, List<SinkMessage>>> match = initMatcher(env, configuration.getMatchInfo(), source);
+        System.out.println("match ok");
 
-//        // 初始化输出目的地
-//        initSink(env, configuration.getSinkInfo(), match);
+        // 初始化输出目的地
+        initSink(env, configuration.getSinkInfo(), match);
+        System.out.println("sink ok");
     }
 
     /**
@@ -73,7 +76,7 @@ public abstract class BaseRtEngine<T> implements RtEngine {
      * @param sinkInfo 输出配置
      * @param filterStream 处理流
      */
-    protected abstract void initSink(StreamExecutionEnvironment env, SinkInfo sinkInfo, DataStream<ReceivedMessage> filterStream);
+    protected abstract void initSink(StreamExecutionEnvironment env, SinkInfo sinkInfo, DataStream<Map<String, List<SinkMessage>>> filterStream);
 
     /**
      * 初始化处理流
@@ -82,7 +85,7 @@ public abstract class BaseRtEngine<T> implements RtEngine {
      * @param sourceStream 数据源流
      * @return 匹配流、超时流二选一
      */
-    protected abstract DataStream<ReceivedMessage> initMatcher(StreamExecutionEnvironment env, MatchInfo matchInfo,
+    protected abstract DataStream<Map<String, List<SinkMessage>>> initMatcher(StreamExecutionEnvironment env, MatchInfo matchInfo,
             DataStream<T> sourceStream);
 
     /**

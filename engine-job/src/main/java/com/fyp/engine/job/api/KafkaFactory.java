@@ -4,9 +4,6 @@ import com.fyp.engine.job.message.EventMessage;
 import com.fyp.engine.job.message.SinkMessage;
 import com.fyp.engine.job.schema.EventMessageSchema;
 import com.fyp.engine.job.schema.SinkMessageSchema;
-import org.apache.flink.connector.base.DeliveryGuarantee;
-import org.apache.flink.connector.kafka.sink.KafkaRecordSerializationSchema;
-import org.apache.flink.connector.kafka.sink.KafkaSink;
 import org.apache.flink.streaming.connectors.kafka.FlinkKafkaConsumer;
 import org.apache.flink.streaming.connectors.kafka.FlinkKafkaProducer;
 

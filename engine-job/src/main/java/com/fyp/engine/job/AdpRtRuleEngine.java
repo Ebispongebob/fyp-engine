@@ -104,7 +104,6 @@ public class AdpRtRuleEngine extends BaseRtEngine<ReceivedMessage> implements Se
         filterStream.addSink(buildKafkaSink(sinkInfo))
                     .name("输出到kafka")
                     .uid(Uid.SINK_KAFKA);
-        ;
     }
 
     /**

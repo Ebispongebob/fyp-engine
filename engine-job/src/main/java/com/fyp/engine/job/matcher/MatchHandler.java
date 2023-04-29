@@ -25,7 +25,7 @@ public class MatchHandler implements Handler<SinkMessage, SinkMessage> {
             where(rule.getEventType());
         }
         // 判断窗口大小
-        if (rule.getWindowSize().equals(-1L)) {
+        if (!rule.getWindowSize().equals(-1L)) {
             within(rule.getWindowSize());
         }
         //判断阈值

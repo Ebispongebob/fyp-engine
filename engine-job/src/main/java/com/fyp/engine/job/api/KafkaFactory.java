@@ -62,6 +62,14 @@ public class KafkaFactory {
         return new FlinkKafkaProducer<>(topic, new SinkMessageSchema(), buildProducerProps(servers));
     }
 
+    /**
+     * 构建kafka sink
+     * @return 生产者
+     */
+    public static FlinkKafkaProducer<EventMessage> buildNormalSink() {
+        return new FlinkKafkaProducer<>("adp_normal_topic", new EventMessageSchema(), buildProducerProps("adp.zoons.top:9092"));
+    }
+
     private static Properties buildProducerProps(String servers) {
         Properties properties = new Properties();
         properties.setProperty("bootstrap.servers", servers);

@@ -59,15 +59,15 @@ public abstract class BaseRtEngine<T> implements RtEngine {
         // 初始化输入数据源
         DataStream<T> source = initSource(env, configuration.getSourceInfo());
 
-        System.out.println("source ok");
+        logger.error("source ok");
 
         // 初始化匹配处理逻辑
         DataStream<Map<String, List<SinkMessage>>> match = initMatcher(env, configuration.getMatchInfo(), source);
-        System.out.println("match ok");
+        logger.error("match ok");
 
         // 初始化输出目的地
         initSink(env, configuration.getSinkInfo(), match);
-        System.out.println("sink ok");
+        logger.error("sink ok");
     }
 
     /**

@@ -28,6 +28,7 @@ import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.DataStreamSource;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.functions.ProcessFunction;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.apache.flink.streaming.connectors.kafka.FlinkKafkaConsumer;
 import org.apache.flink.streaming.connectors.kafka.FlinkKafkaProducer;
@@ -36,6 +37,8 @@ import org.apache.flink.table.api.TableResult;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.types.Row;
 import org.apache.flink.util.CloseableIterator;
+import org.apache.flink.util.Collector;
+import org.apache.flink.util.OutputTag;
 
 import java.io.Serializable;
 import java.util.List;
@@ -62,6 +65,11 @@ public class AdpRtRuleEngine extends BaseRtEngine<ReceivedMessage> implements Se
             throw new BusinessException(ReturnStatus.SC_BAD_REQUEST, "args error");
         }
         new AdpRtRuleEngine(buildConfiguration(args[0], args[1])).run();
+    }
+
+    public static void trigger(String referenceId, String topic) {
+        new AdpRtRuleEngine(buildConfiguration(referenceId, topic)).run();
+        System.out.println("--------------" + referenceId + "   " + topic + " finish create");
     }
 
     public static Configuration buildConfiguration(String referenceId, String topic) {
@@ -113,13 +121,20 @@ public class AdpRtRuleEngine extends BaseRtEngine<ReceivedMessage> implements Se
         return KafkaFactory.buildSinkMessageSink(sinkInfo.getTopic(), sinkInfo.getServers());
     }
 
+    /**
+     * 构建normal sink
+     */
+    private FlinkKafkaProducer<EventMessage> buildNormalSink() {
+        return KafkaFactory.buildNormalSink();
+    }
+
     @Override
     protected DataStream<Map<String, List<SinkMessage>>> initMatcher(StreamExecutionEnvironment env, MatchInfo matchInfo,
             DataStream<ReceivedMessage> sourceStream) {
 
         RuleConfig rule = buildRuleList(env, matchInfo.getReferenceId());
 
-        // 2 sink message
+        // 2SinkMessage
         SingleOutputStreamOperator<SinkMessage> matchStream = sourceStream.map(receivedMessage -> {
             SinkMessage sinkMessage = new SinkMessage();
             sinkMessage.setId(receivedMessage.getId());
@@ -136,8 +151,8 @@ public class AdpRtRuleEngine extends BaseRtEngine<ReceivedMessage> implements Se
         Pattern<SinkMessage, SinkMessage> pattern = Pattern.begin("begin");
 
         // load pattern from db
-        MatchHandler matchHandler = new MatchHandler(pattern, rule);
-        Pattern<SinkMessage, SinkMessage> pattern1 = matchHandler.doHandle();
+        MatchHandler                      matchHandler = new MatchHandler(pattern, rule);
+        Pattern<SinkMessage, SinkMessage> pattern1     = matchHandler.doHandle();
 
         // build pattern stream
         SingleOutputStreamOperator<Map<String, List<SinkMessage>>> process = CEP.pattern(matchStream, pattern1)
@@ -147,7 +162,6 @@ public class AdpRtRuleEngine extends BaseRtEngine<ReceivedMessage> implements Se
                                                                                 .process(new MatchProcess())
                                                                                 .uid(Uid.CEP)
                                                                                 .name("match");
-        process.print();
         return process;
     }
 
@@ -194,6 +208,24 @@ public class AdpRtRuleEngine extends BaseRtEngine<ReceivedMessage> implements Se
         sourceFunction = buildKafkaSource(sourceInfo.getConsumerInfo());
         DataStreamSource<EventMessage> dataStreamSource = env.addSource(sourceFunction);
 
+        OutputTag<EventMessage> normalOutput = new OutputTag<EventMessage>("normal") {
+        };
+        OutputTag<EventMessage> alertOutput = new OutputTag<EventMessage>("alert") {
+        };
+
+        SingleOutputStreamOperator<Object> splitStream = dataStreamSource.process(new ProcessFunction<EventMessage, Object>() {
+            @Override
+            public void processElement(EventMessage eventMessage, ProcessFunction<EventMessage, Object>.Context context, Collector<Object> collector) throws Exception {
+                if (eventMessage.getEventType().equals("normal")) {
+                    context.output(normalOutput, eventMessage);
+                } else {
+                    context.output(alertOutput, eventMessage);
+                }
+            }
+        });
+
+        splitStream.getSideOutput(normalOutput).addSink(buildNormalSink());
+
         // 设置source并行度
         int pall = OperatorUtils.calParallelism(env, sourceInfo.getParallelism());
         dataStreamSource
@@ -202,17 +234,19 @@ public class AdpRtRuleEngine extends BaseRtEngine<ReceivedMessage> implements Se
                 .uid(Uid.SOURCE);
 
         // 预处理
-        SingleOutputStreamOperator<ReceivedMessage> result = dataStreamSource
-                // 事件前置过滤
-                .filter(new EventMessagePreFilter(
-                        buildQueryList(env, ruleEngineValidReferenceTable, SqlConstants.connectValidReferenceSql, SqlConstants.queryValidReferenceSql,
-                                       FieldConstants.validReferenceId),
-                        buildQueryList(env, ruleEngineEventTypeTable, SqlConstants.connectValidEventSql, SqlConstants.queryValidEventSql, FieldConstants.validEventType))
-                )
-                .name(FuncName.PRE_FILTER)
-                // 事件补全
-                .map(new EventMessageCompensator())
-                .name(FuncName.COMPENSATE);
+        SingleOutputStreamOperator<ReceivedMessage> result = splitStream.getSideOutput(alertOutput)
+                                                                        // 事件前置过滤
+                                                                        .filter(new EventMessagePreFilter(
+                                                                                buildQueryList(env, ruleEngineValidReferenceTable, SqlConstants.connectValidReferenceSql,
+                                                                                               SqlConstants.queryValidReferenceSql,
+                                                                                               FieldConstants.validReferenceId),
+                                                                                buildQueryList(env, ruleEngineEventTypeTable, SqlConstants.connectValidEventSql,
+                                                                                               SqlConstants.queryValidEventSql, FieldConstants.validEventType))
+                                                                        )
+                                                                        .name(FuncName.PRE_FILTER)
+                                                                        // 事件补全
+                                                                        .map(new EventMessageCompensator())
+                                                                        .name(FuncName.COMPENSATE);
 
         return result;
     }
@@ -235,7 +269,7 @@ public class AdpRtRuleEngine extends BaseRtEngine<ReceivedMessage> implements Se
     }
 
     /**
-     * 使用CDC构建过滤列表
+     * 使用Table构建过滤列表
      */
     private static List<String> buildQueryList(StreamExecutionEnvironment env, String table, String connectSql, String querySql, String field) {
         EnvironmentSettings    settings = EnvironmentSettings.newInstance().inStreamingMode().build();
